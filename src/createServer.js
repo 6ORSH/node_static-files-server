@@ -3,10 +3,14 @@
 const http = require('http');
 const fs = require('fs/promises');
 const path = require('path');
+const mime = require('mime-types');
 
 function createServer() {
   return http.createServer(async (request, response) => {
-    if (request.url.includes('//')) {
+    const url = new URL(request.url || '/', `http://${request.headers.host}`);
+    const { pathname } = url;
+
+    if (pathname.includes('//')) {
       response.statusCode = 404;
       response.setHeader('Content-type', 'text/plain');
       response.end('Path cannot contain double slashes');
@@ -14,11 +18,16 @@ function createServer() {
       return;
     }
 
-    const url = new URL(request.url || '/', `http://${request.headers.host}`);
-    const { pathname } = url;
-
-    if (!pathname.startsWith('/file')) {
+    if (pathname.includes('..')) {
       response.statusCode = 400;
+      response.setHeader('Content-type', 'text/plain');
+      response.end('Attempt to access files outside public folder');
+
+      return;
+    }
+
+    if (!pathname.startsWith('/file/')) {
+      response.statusCode = 200;
       response.setHeader('Content-type', 'text/plain');
 
       response.end(
@@ -43,7 +52,10 @@ function createServer() {
       const fileData = await fs.readFile(filePath, 'utf-8');
 
       response.statusCode = 200;
-      response.setHeader('Content-type', 'text/plain');
+
+      const mimeType = mime.contentType(path.extname(filePath)) || 'text/plain';
+
+      response.setHeader('Content-Type', mimeType);
       response.end(fileData);
     } catch (error) {
       response.statusCode = 404;
